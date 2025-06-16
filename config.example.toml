@@ -1,0 +1,81 @@
+# Vue Options to Composition API transformation configuration
+# This is a complete example showing all available configuration options
+
+# Mixin transformations
+# Configure how Vue 2 mixins should be converted to Vue 3 composables
+[mixins]
+
+[mixins.price]
+name = "usePrice"
+imports = [
+  "currency",
+  "maximumFractionDigits",
+  "priceRaw",
+  "priceDiscountRaw",
+  "filterPrices",
+  "lowestPrice",
+  "fromPrice",
+  "price",
+  "discountPrice",
+  "priceRound",
+]
+
+[mixins.auth]
+name = "useAuth"
+imports = ["isAuthenticated", "user", "login", "logout", "checkPermission"]
+
+[mixins.validation]
+name = "useValidation"
+imports = [
+  "validateEmail",
+  "validatePassword",
+  "validateRequired",
+  "showErrors",
+  "clearErrors",
+]
+
+# Configure import rewrites for libraries
+[imports_rewrite.bootstrap-vue]
+name = "bootstrap-vue-next"
+
+[imports_rewrite.bootstrap-vue.component_rewrite]
+BSidebar = "BOffcanvas"
+BNavbar = "BNavbar"
+BModal = "BModal"
+
+[imports_rewrite.bootstrap-vue.directives]
+"v-b-toggle" = "vBToggle"
+"v-b-modal" = "vBModal"
+
+[imports_rewrite.vuetify]
+name = "vuetify/lib"
+
+[imports_rewrite.vuetify.component_rewrite]
+VCard = "VCard"
+VBtn = "VBtn"
+
+# Configure Vuex to Pinia store mappings
+[vuex.user]
+name = "user"
+import_name = "useUserStore"
+
+[vuex.cart]
+name = "cart"
+import_name = "useCartStore"
+
+[vuex.products]
+name = "products"
+import_name = "useProductsStore"
+
+# Configure additional component imports
+[additional_imports.ClientOnly]
+import_path = "@/components/ClientOnly.vue"
+
+[additional_imports.NuxtLink]
+rewrite_to = "router-link"
+
+[additional_imports.LazyHydrate]
+import_path = "vue-lazy-hydration"
+
+# List of imports to keep unchanged
+import_keeplist = ["vue", "vue-router", "@nuxtjs/composition-api"]
