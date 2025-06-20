@@ -121,7 +121,9 @@ pub fn rewrite_sfc(
   // 1. Setup code (composables, stores, router, etc.)
   if !transformation_result.setup.is_empty() {
     for line in &transformation_result.setup {
-      result_sfc.push_str(line);
+      // Rewrite ~/ to @/ in dynamic imports
+      let rewritten_line = line.replace("'~/", "'@/").replace("\"~/", "\"@/");
+      result_sfc.push_str(&rewritten_line);
       result_sfc.push('\n');
     }
     sections_added = true;
@@ -133,7 +135,9 @@ pub fn rewrite_sfc(
       result_sfc.push('\n');
     }
     for line in &transformation_result.reactive_state {
-      result_sfc.push_str(line);
+      // Rewrite ~/ to @/ in dynamic imports
+      let rewritten_line = line.replace("'~/", "'@/").replace("\"~/", "\"@/");
+      result_sfc.push_str(&rewritten_line);
       result_sfc.push('\n');
     }
     sections_added = true;
@@ -145,7 +149,9 @@ pub fn rewrite_sfc(
       result_sfc.push('\n');
     }
     for line in &transformation_result.computed_properties {
-      result_sfc.push_str(line);
+      // Rewrite ~/ to @/ in dynamic imports
+      let rewritten_line = line.replace("'~/", "'@/").replace("\"~/", "\"@/");
+      result_sfc.push_str(&rewritten_line);
       result_sfc.push('\n');
     }
     sections_added = true;
@@ -169,7 +175,9 @@ pub fn rewrite_sfc(
       result_sfc.push('\n');
     }
     for line in &transformation_result.methods {
-      result_sfc.push_str(line);
+      // Rewrite ~/ to @/ in dynamic imports
+      let rewritten_line = line.replace("'~/", "'@/").replace("\"~/", "\"@/");
+      result_sfc.push_str(&rewritten_line);
       result_sfc.push('\n');
     }
     sections_added = true;
@@ -181,17 +189,21 @@ pub fn rewrite_sfc(
       result_sfc.push('\n');
     }
     for line in &transformation_result.lifecycle_hooks {
-      result_sfc.push_str(line);
+      // Rewrite ~/ to @/ in dynamic imports
+      let rewritten_line = line.replace("'~/", "'@/").replace("\"~/", "\"@/");
+      result_sfc.push_str(&rewritten_line);
       result_sfc.push('\n');
     }
   }
 
   result_sfc.push_str("</script>");
 
-  // Add additional script blocks
+  // Add additional script blocks (with path rewriting)
   for script_block in &transformation_result.additional_scripts {
     result_sfc.push('\n');
-    result_sfc.push_str(script_block);
+    // Rewrite ~/ to @/ in dynamic imports
+    let rewritten_block = script_block.replace("'~/", "'@/").replace("\"~/", "\"@/");
+    result_sfc.push_str(&rewritten_block);
   }
 
   // Add style section if present

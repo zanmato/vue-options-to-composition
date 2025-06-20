@@ -18,8 +18,10 @@ impl AssetsTransformer {
   /// Check if there are asset paths that need transformation
   fn has_asset_transformations(&self, context: &TransformationContext) -> bool {
     if let Some(template_content) = &context.sfc_sections.template_content {
-      // Check for Nuxt-style asset paths
-      template_content.contains("~/assets/") || template_content.contains("~assets/")
+      // Check for Nuxt-style asset paths or require() calls
+      template_content.contains("~/assets/") 
+        || template_content.contains("~assets/")
+        || template_content.contains("require(")
     } else {
       false
     }
@@ -28,10 +30,10 @@ impl AssetsTransformer {
   /// Generate template replacements for asset paths
   fn generate_template_replacements(
     &self,
-    _context: &TransformationContext,
+    context: &TransformationContext,
   ) -> Vec<TemplateReplacement> {
-    // Transform Nuxt-style asset paths to standard Vue paths
-    vec![
+    let mut replacements = vec![
+      // Transform Nuxt-style asset paths to standard Vue paths
       TemplateReplacement {
         find: "~/assets/".to_string(),
         replace: "@/assets/".to_string(),
@@ -40,7 +42,34 @@ impl AssetsTransformer {
         find: "~assets/".to_string(),
         replace: "@/assets/".to_string(),
       },
-    ]
+    ];
+
+    // Add require() removal replacements if needed
+    if let Some(template_content) = &context.sfc_sections.template_content {
+      if template_content.contains("require(") {
+        // Use regex to handle require() patterns more flexibly
+        use regex::Regex;
+        
+        // Find all require patterns and create specific replacements
+        let require_regex = Regex::new(r#":src="require\(([^)]+)\)""#).unwrap();
+        for captures in require_regex.captures_iter(template_content) {
+          if let Some(path_match) = captures.get(1) {
+            let path = path_match.as_str();
+            let full_match = captures.get(0).unwrap().as_str();
+            
+            // Replace :src="require('path')" with src="path" 
+            // Extract the path without quotes and add consistent double quotes
+            let clean_path = path.trim_matches('\'').trim_matches('"');
+            replacements.push(TemplateReplacement {
+              find: full_match.to_string(),
+              replace: format!("src=\"{}\"", clean_path),
+            });
+          }
+        }
+      }
+    }
+
+    replacements
   }
 }
 

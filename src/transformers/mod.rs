@@ -63,28 +63,44 @@ pub mod body_transforms {
     let mut result = body.to_string();
 
     // Transform data property accesses (this.prop -> prop.value)
-    for data_prop in &context.script_state.data_properties {
+    // Sort by length (longest first) to prevent substring replacements
+    let mut data_props_sorted = context.script_state.data_properties.clone();
+    data_props_sorted.sort_by(|a, b| b.name.len().cmp(&a.name.len()));
+    
+    for data_prop in &data_props_sorted {
       let this_access = format!("this.{}", data_prop.name);
       let ref_access = format!("{}.value", data_prop.name);
       result = result.replace(&this_access, &ref_access);
     }
 
     // Transform computed property accesses (this.computed -> computed.value)
-    for computed_prop in &context.script_state.computed_properties {
+    // Sort by length (longest first) to prevent substring replacements
+    let mut computed_props_sorted = context.script_state.computed_properties.clone();
+    computed_props_sorted.sort_by(|a, b| b.len().cmp(&a.len()));
+    
+    for computed_prop in &computed_props_sorted {
       let this_access = format!("this.{}", computed_prop);
       let ref_access = format!("{}.value", computed_prop);
       result = result.replace(&this_access, &ref_access);
     }
 
     // Transform prop accesses (this.propName -> props.propName)
-    for prop in &context.script_state.props {
+    // Sort by length (longest first) to prevent substring replacements
+    let mut props_sorted = context.script_state.props.clone();
+    props_sorted.sort_by(|a, b| b.name.len().cmp(&a.name.len()));
+    
+    for prop in &props_sorted {
       let this_access = format!("this.{}", prop.name);
       let prop_access = format!("props.{}", prop.name);
       result = result.replace(&this_access, &prop_access);
     }
 
     // Transform method calls (this.method() -> method())
-    for method in &context.script_state.methods {
+    // Sort by length (longest first) to prevent substring replacements
+    let mut methods_sorted = context.script_state.methods.clone();
+    methods_sorted.sort_by(|a, b| b.len().cmp(&a.len()));
+    
+    for method in &methods_sorted {
       let this_call = format!("this.{}(", method);
       let direct_call = format!("{}(", method);
       result = result.replace(&this_call, &direct_call);
@@ -92,7 +108,7 @@ pub mod body_transforms {
 
     // Transform method references (this.method -> method)
     // This handles method references (not calls) like in event listeners
-    for method in &context.script_state.methods {
+    for method in &methods_sorted {
       let this_ref = format!("this.{}", method);
       let direct_ref = method;
 

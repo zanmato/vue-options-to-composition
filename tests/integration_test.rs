@@ -23,12 +23,14 @@ mod tests {
     export default {
       data() {
         return {
-          count: 0
+          count: 0,
+          countOptions: [],
         };
       },
       methods: {
         increment() {
           this.count++;
+          console.log(this.countOptions);
         }
       }
     }
@@ -44,9 +46,11 @@ mod tests {
 import { ref } from 'vue';
 
 const count = ref(0);
+const countOptions = ref([]);
 
 const increment = () => {
   count.value++;
+  console.log(countOptions.value);
 };
 </script>"#;
 
@@ -528,9 +532,35 @@ h1 {
   }
 
   #[test]
+  fn test_should_handle_localeprops() {
+    let sfc = r#"<template>
+    <span>{{ $i18n.localeProperties.brand }}</span>
+    </template>
+    <script>
+    export default {
+    }
+    </script>"#;
+
+    let expected = r#"
+<template>
+  <span>{{ localeProperties.brand }}</span>
+</template>
+<script setup>
+import { useI18nUtils } from '@/composables/useI18nUtils';
+
+const { localeProperties } = useI18nUtils();
+</script>"#;
+
+    let result = rewrite_sfc(sfc, None).unwrap();
+
+    assert_eq!(trim_whitespace(&result), trim_whitespace(expected));
+  }
+
+  #[test]
   fn test_should_handle_i18n_utils() {
     let sfc = r#"<template><nuxt-link :to="localePath('my-account')">{{ title }}</nuxt-link>
     <span>{{ $i18n.locale }}</span>
+    <span>{{ $i18n.localeProperties.brand }}</span>
     </template>
     <script>
     export default {
@@ -557,6 +587,7 @@ h1 {
 <template>
   <router-link :to="localePath('my-account')">{{ title }}</router-link>
   <span>{{ locale }}</span>
+  <span>{{ localeProperties.brand }}</span>
 </template>
 <script setup>
 import { onMounted, ref } from 'vue';
@@ -597,12 +628,14 @@ onMounted(() => {
     import AnotherComponent from '~/components/AnotherComponent.vue';
 
     const BigAsyncComponent = () => import('@/components/BigAsyncComponent.vue');
+    const AnotherBigAsyncComponent = () => import('~/components/BigAsyncComponent.vue');
 
     export default {
       components: {
         MyComponent,
         AnotherComponent,
-        BigAsyncComponent
+        BigAsyncComponent,
+        AnotherBigAsyncComponent,
       },
       data() {
         return {
@@ -622,6 +655,7 @@ import vSelect from 'vue-select';
 import MyComponent from '@/components/MyComponent.vue';
 import AnotherComponent from '@/components/AnotherComponent.vue';
 const BigAsyncComponent = () => import('@/components/BigAsyncComponent.vue');
+const AnotherBigAsyncComponent = () => import('@/components/BigAsyncComponent.vue');
 
 const title = ref('Hello world');
 </script>"#;
@@ -633,7 +667,10 @@ const title = ref('Hello world');
 
   #[test]
   fn test_should_handle_route_and_router() {
-    let sfc = r#"<template><h1>{{ title }}</h1></template>
+    let sfc = r#"<template>
+    <h1>{{ title }}</h1>
+    <span>{{ $route.params.id }}</span>
+    </template>
     <script>
     export default {
       data() {
@@ -651,6 +688,7 @@ const title = ref('Hello world');
     let expected = r##"
 <template>
   <h1>{{ title }}</h1>
+  <span>{{ route.params.id }}</span>
 </template>
 <script setup>
 import { onMounted, ref } from 'vue';

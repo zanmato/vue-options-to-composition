@@ -156,8 +156,8 @@ impl I18nTransformer {
 
   /// Check if i18n utilities are used (localeProperties, localePath, localeRoute)
   fn has_i18n_utils_usage(&self, context: &TransformationContext) -> bool {
-    // Check for $i18n.localeProperties usage
-    let has_locale_properties = context
+    // Check for $i18n.localeProperties usage in script
+    let has_locale_properties_script = context
       .script_state
       .method_details
       .iter()
@@ -168,6 +168,15 @@ impl I18nTransformer {
           .as_ref()
           .is_some_and(|v| v.contains("$i18n.localeProperties"))
       });
+
+    // Check for $i18n.localeProperties usage in template
+    let has_locale_properties_template = if let Some(template_content) = &context.sfc_sections.template_content {
+      template_content.contains("$i18n.localeProperties")
+    } else {
+      false
+    };
+
+    let has_locale_properties = has_locale_properties_script || has_locale_properties_template;
 
     // Check for localePath and localeRoute function calls
     let has_locale_functions = context
@@ -230,7 +239,7 @@ impl I18nTransformer {
     let mut needed_utils = Vec::new();
 
     // Check what i18n utils are needed
-    let has_locale_properties = context
+    let has_locale_properties_script = context
       .script_state
       .method_details
       .iter()
@@ -241,6 +250,14 @@ impl I18nTransformer {
           .as_ref()
           .is_some_and(|v| v.contains("$i18n.localeProperties"))
       });
+
+    let has_locale_properties_template = if let Some(template_content) = &context.sfc_sections.template_content {
+      template_content.contains("$i18n.localeProperties")
+    } else {
+      false
+    };
+
+    let has_locale_properties = has_locale_properties_script || has_locale_properties_template;
 
     if has_locale_properties {
       needed_utils.push("localeProperties");
@@ -359,6 +376,14 @@ impl I18nTransformer {
       });
     }
 
+    // Replace $i18n.localeProperties with localeProperties in templates
+    if self.has_i18n_utils_usage(context) {
+      replacements.push(TemplateReplacement {
+        find: "$i18n.localeProperties".to_string(),
+        replace: "localeProperties".to_string(),
+      });
+    }
+
     replacements
   }
 }
@@ -400,6 +425,11 @@ impl Transformer for I18nTransformer {
     if self.has_i18n_utils_usage(context) {
       self.add_i18n_utils_imports(&mut result);
       result.setup.extend(self.generate_i18n_utils_setup(context));
+      
+      // Generate template replacements for utils
+      result
+        .template_replacements
+        .extend(self.generate_template_replacements(context));
     }
 
     result

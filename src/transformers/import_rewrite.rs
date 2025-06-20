@@ -22,6 +22,7 @@ impl ImportRewriteTransformer {
     Self
   }
 
+
   /// Check if context contains imports that need rewriting
   fn has_rewritable_imports(
     &self,
@@ -227,6 +228,7 @@ impl Transformer for ImportRewriteTransformer {
 
     result
   }
+
 }
 
 /// Convert PascalCase to kebab-case

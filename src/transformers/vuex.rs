@@ -191,7 +191,7 @@ impl VuexTransformer {
 
         // Transform computed properties created by Vuex map functions to .value syntax
         let aliased_getters = transformer.extract_aliased_getters(context);
-        for (alias, _namespace, _getter) in &aliased_getters {
+        for (alias, _namespace, _getter, _is_array_syntax) in &aliased_getters {
           let pattern = format!("\\bthis\\.{}\\b", regex::escape(alias));
           if let Ok(regex_pattern) = regex::Regex::new(&pattern) {
             transformed_body = regex_pattern
@@ -201,7 +201,7 @@ impl VuexTransformer {
         }
 
         let aliased_state = transformer.extract_aliased_state_properties(context);
-        for (alias, _namespace, _property) in &aliased_state {
+        for (alias, _namespace, _property, _is_array_syntax) in &aliased_state {
           let pattern = format!("\\bthis\\.{}\\b", regex::escape(alias));
           if let Ok(regex_pattern) = regex::Regex::new(&pattern) {
             transformed_body = regex_pattern
@@ -217,7 +217,7 @@ impl VuexTransformer {
         let _aliased_state = transformer.extract_aliased_state_properties(context);
 
         // Transform calls to aliased actions: this.fetchUser() -> userStore.fetchUser()
-        for (alias, namespace, _action_name) in &aliased_actions {
+        for (alias, namespace, _action_name, _is_array_syntax) in &aliased_actions {
           let pattern = format!("this\\.{}\\(", regex::escape(alias));
           if let Ok(regex_pattern) = regex::Regex::new(&pattern) {
             transformed_body = regex_pattern
@@ -227,7 +227,7 @@ impl VuexTransformer {
         }
 
         // Transform calls to aliased mutations: this.setUser() -> userStore.setUser()
-        for (alias, namespace, _mutation_name) in &aliased_mutations {
+        for (alias, namespace, _mutation_name, _is_array_syntax) in &aliased_mutations {
           let pattern = format!("this\\.{}\\(", regex::escape(alias));
           if let Ok(regex_pattern) = regex::Regex::new(&pattern) {
             transformed_body = regex_pattern
@@ -344,11 +344,11 @@ impl VuexTransformer {
   }
 
   /// Extract aliased getters and state properties from map function calls
-  /// Returns Vec<(alias, namespace, getter_or_property_name)>
+  /// Returns Vec<(alias, namespace, getter_or_property_name, is_array_syntax)>
   fn extract_aliased_getters(
     &self,
     context: &TransformationContext,
-  ) -> Vec<(String, String, String)> {
+  ) -> Vec<(String, String, String, bool)> {
     let mut aliased_getters = Vec::new();
 
     for function_call in &context.script_state.function_call_details {
@@ -362,11 +362,11 @@ impl VuexTransformer {
   }
 
   /// Extract aliased actions from map function calls
-  /// Returns Vec<(alias, namespace, action_name)>
+  /// Returns Vec<(alias, namespace, action_name, is_array_syntax)>
   fn extract_aliased_actions(
     &self,
     context: &TransformationContext,
-  ) -> Vec<(String, String, String)> {
+  ) -> Vec<(String, String, String, bool)> {
     let mut aliased_actions = Vec::new();
 
     for function_call in &context.script_state.function_call_details {
@@ -380,11 +380,11 @@ impl VuexTransformer {
   }
 
   /// Extract aliased mutations from map function calls
-  /// Returns Vec<(alias, namespace, mutation_name)>
+  /// Returns Vec<(alias, namespace, mutation_name, is_array_syntax)>
   fn extract_aliased_mutations(
     &self,
     context: &TransformationContext,
-  ) -> Vec<(String, String, String)> {
+  ) -> Vec<(String, String, String, bool)> {
     let mut aliased_mutations = Vec::new();
 
     for function_call in &context.script_state.function_call_details {
@@ -401,7 +401,7 @@ impl VuexTransformer {
   fn parse_map_function_with_tree_sitter(
     &self,
     full_call: &str,
-    results: &mut Vec<(String, String, String)>,
+    results: &mut Vec<(String, String, String, bool)>,
   ) {
     let mut parser = tree_sitter::Parser::new();
     parser
@@ -420,7 +420,7 @@ impl VuexTransformer {
     &self,
     node: &tree_sitter::Node,
     source: &str,
-    results: &mut Vec<(String, String, String)>,
+    results: &mut Vec<(String, String, String, bool)>,
   ) {
     if node.kind() == "call_expression" {
       if let Some(arguments) = node.child_by_field_name("arguments") {
@@ -464,9 +464,9 @@ impl VuexTransformer {
 
         if let Some(arg) = second_arg {
           if arg.kind() == "object" {
-            self.extract_object_mappings(&arg, source, results, namespace);
+            self.extract_object_mappings(&arg, source, results, namespace, false);
           } else if arg.kind() == "array" && namespace.is_some() {
-            self.extract_array_mappings(&arg, source, results, namespace);
+            self.extract_array_mappings(&arg, source, results, namespace, true);
           }
         }
       }
@@ -485,8 +485,9 @@ impl VuexTransformer {
     &self,
     node: &tree_sitter::Node,
     source: &str,
-    results: &mut Vec<(String, String, String)>,
+    results: &mut Vec<(String, String, String, bool)>,
     namespace: Option<String>,
+    is_array_syntax: bool,
   ) {
     for i in 0..node.child_count() {
       if let Some(child) = node.child(i) {
@@ -517,13 +518,13 @@ impl VuexTransformer {
           if let (Some(alias), Some(val)) = (key, value) {
             if let Some(ref ns) = namespace {
               // mapState case: namespace provided, value is the property name
-              results.push((alias, ns.clone(), val));
+              results.push((alias, ns.clone(), val, is_array_syntax));
             } else {
               // mapGetters/mapActions/mapMutations case: value is 'namespace/action'
               if let Some(slash_pos) = val.find('/') {
                 let ns = val[..slash_pos].to_string();
                 let action = val[slash_pos + 1..].to_string();
-                results.push((alias, ns, action));
+                results.push((alias, ns, action, is_array_syntax));
               }
             }
           }
@@ -539,8 +540,9 @@ impl VuexTransformer {
     &self,
     node: &tree_sitter::Node,
     source: &str,
-    results: &mut Vec<(String, String, String)>,
+    results: &mut Vec<(String, String, String, bool)>,
     namespace: Option<String>,
+    is_array_syntax: bool,
   ) {
     if let Some(ns) = namespace {
       for i in 0..node.child_count() {
@@ -566,7 +568,7 @@ impl VuexTransformer {
               property_name.clone()
             };
 
-            results.push((alias, ns.clone(), property_name));
+            results.push((alias, ns.clone(), property_name, is_array_syntax));
           }
         }
       }
@@ -578,12 +580,50 @@ impl VuexTransformer {
     source[node.start_byte()..node.end_byte()].to_string()
   }
 
+  /// Check if a property is actually used in the template or script
+  fn is_property_used(&self, property_name: &str, context: &TransformationContext) -> bool {
+    // Check template usage
+    if let Some(template_content) = &context.sfc_sections.template_content {
+      if template_content.contains(&format!("{{ {}", property_name))
+        || template_content.contains(&format!("{{{{{}", property_name))
+        || template_content.contains(&format!(" {}", property_name))
+        || template_content.contains(&format!("\"{}\"", property_name))
+        || template_content.contains(&format!("'{}'", property_name))
+      {
+        return true;
+      }
+    }
+
+    // Check script usage - look for this.propertyName usage
+    if let Some(script_content) = &context.sfc_sections.script_content {
+      if script_content.contains(&format!("this.{}", property_name)) {
+        return true;
+      }
+    }
+
+    // Check identifiers in script state
+    for identifier in &context.script_state.identifiers {
+      if identifier == property_name || identifier == &format!("this.{}", property_name) {
+        return true;
+      }
+    }
+
+    // Check identifiers in template state
+    for identifier in &context.template_state.identifiers {
+      if identifier == property_name {
+        return true;
+      }
+    }
+
+    false
+  }
+
   /// Extract aliased state properties from mapState function calls
-  /// Returns Vec<(alias, namespace, state_property)>
+  /// Returns Vec<(alias, namespace, state_property, is_array_syntax)>
   fn extract_aliased_state_properties(
     &self,
     context: &TransformationContext,
-  ) -> Vec<(String, String, String)> {
+  ) -> Vec<(String, String, String, bool)> {
     let mut aliased_state = Vec::new();
 
     for function_call in &context.script_state.function_call_details {
@@ -644,22 +684,27 @@ impl Transformer for VuexTransformer {
       }
     }
 
-    // Generate computed properties from mapGetters
+    // Generate computed properties from mapGetters (only if used)
     let aliased_getters = self.extract_aliased_getters(context);
-    for (alias, namespace, getter) in aliased_getters {
-      result.computed_properties.push(format!(
-        "const {} = computed(() => {}Store.{}());",
-        alias, namespace, getter
-      ));
+    for (alias, namespace, getter, is_array_syntax) in aliased_getters {
+      if self.is_property_used(&alias, context) {
+        let parentheses = if is_array_syntax { "()" } else { "" };
+        result.computed_properties.push(format!(
+          "const {} = computed(() => {}Store.{}{});",
+          alias, namespace, getter, parentheses
+        ));
+      }
     }
 
-    // Generate computed properties from mapState
+    // Generate computed properties from mapState (only if used)
     let aliased_state = self.extract_aliased_state_properties(context);
-    for (alias, namespace, property) in aliased_state {
-      result.computed_properties.push(format!(
-        "const {} = computed(() => {}Store.{});",
-        alias, namespace, property
-      ));
+    for (alias, namespace, property, _is_array_syntax) in aliased_state {
+      if self.is_property_used(&alias, context) {
+        result.computed_properties.push(format!(
+          "const {} = computed(() => {}Store.{});",
+          alias, namespace, property
+        ));
+      }
     }
 
     // Generate template replacements for $store usage

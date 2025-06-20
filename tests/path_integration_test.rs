@@ -18,6 +18,8 @@ mod tests {
     let sfc = r#"
 <template>
   <img src="~/assets/logo.png" alt="Logo" />
+  <img :src="require('~/assets/logo.png')" alt="Logo" />
+  <img :src="require('@/assets/logo.png')" alt="Logo" />
 </template>
 <script>
 export default {
@@ -29,6 +31,8 @@ export default {
 
     let expected = r#"
 <template>
+  <img src="@/assets/logo.png" alt="Logo" />
+  <img src="@/assets/logo.png" alt="Logo" />
   <img src="@/assets/logo.png" alt="Logo" />
 </template>
 <script setup>

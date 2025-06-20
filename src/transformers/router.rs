@@ -1,5 +1,5 @@
 use super::{BodyTransformFn, Transformer};
-use crate::{TransformationContext, TransformationResult, TransformerConfig};
+use crate::{TemplateReplacement, TransformationContext, TransformationResult, TransformerConfig};
 
 /// Transformer for converting Vue Router usage from Options API to Composition API
 ///
@@ -21,12 +21,12 @@ impl RouterTransformer {
 
   /// Check if context contains $route usage
   fn has_route_usage(&self, context: &TransformationContext) -> bool {
-    self.has_route_in_identifiers(context) || self.has_route_in_methods(context)
+    self.has_route_in_identifiers(context) || self.has_route_in_methods(context) || self.has_route_in_template(context)
   }
 
   /// Check if context contains $router usage
   fn has_router_usage(&self, context: &TransformationContext) -> bool {
-    self.has_router_in_identifiers(context) || self.has_router_in_methods(context)
+    self.has_router_in_identifiers(context) || self.has_router_in_methods(context) || self.has_router_in_template(context)
   }
 
   /// Check for $route in identifiers and function calls
@@ -74,6 +74,24 @@ impl RouterTransformer {
       .iter()
       .any(|method| method.body.contains("$router"))
   }
+
+  /// Check for $route usage in template
+  fn has_route_in_template(&self, context: &TransformationContext) -> bool {
+    if let Some(template_content) = &context.sfc_sections.template_content {
+      template_content.contains("$route")
+    } else {
+      false
+    }
+  }
+
+  /// Check for $router usage in template
+  fn has_router_in_template(&self, context: &TransformationContext) -> bool {
+    if let Some(template_content) = &context.sfc_sections.template_content {
+      template_content.contains("$router")
+    } else {
+      false
+    }
+  }
 }
 
 impl Transformer for RouterTransformer {
@@ -116,6 +134,21 @@ impl Transformer for RouterTransformer {
     // Add blank line after setup if we added anything
     if self.has_route_usage(context) || self.has_router_usage(context) {
       result.add_setup("".to_string());
+    }
+
+    // Add template replacements for $route and $router
+    if self.has_route_in_template(context) {
+      result.template_replacements.push(TemplateReplacement {
+        find: "$route".to_string(),
+        replace: "route".to_string(),
+      });
+    }
+
+    if self.has_router_in_template(context) {
+      result.template_replacements.push(TemplateReplacement {
+        find: "$router".to_string(),
+        replace: "router".to_string(),
+      });
     }
 
     result
