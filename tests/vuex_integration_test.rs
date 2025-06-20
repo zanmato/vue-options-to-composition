@@ -126,13 +126,12 @@ const http = useHttp();
 const cartStore = useCartStore();
 const userStore = useUserStore();
 
-const user = computed(() => userStore.getUser());
-const hasGrants = computed(() => cartStore.hasGrants());
+const user = computed(() => userStore.getUser);
 const userID = computed(() => userStore.userID);
 
 const someMethod = () => {
   if (
-  userStore.userID === '123'
+    userStore.userID === '123'
   ) {
     console.log('YES!');
   }
