@@ -44,12 +44,11 @@ impl AssetsTransformer {
       },
     ];
 
-    // Add require() removal replacements if needed
+    // Add require() removal and SVG ?url replacements if needed
     if let Some(template_content) = &context.sfc_sections.template_content {
+      use regex::Regex;
+      
       if template_content.contains("require(") {
-        // Use regex to handle require() patterns more flexibly
-        use regex::Regex;
-        
         // Find all require patterns and create specific replacements
         let require_regex = Regex::new(r#":src="require\(([^)]+)\)""#).unwrap();
         for captures in require_regex.captures_iter(template_content) {
@@ -60,10 +59,37 @@ impl AssetsTransformer {
             // Replace :src="require('path')" with src="path" 
             // Extract the path without quotes and add consistent double quotes
             let clean_path = path.trim_matches('\'').trim_matches('"');
+            
+            // Add ?url suffix for SVG files
+            let final_path = if clean_path.ends_with(".svg") {
+              format!("{}?url", clean_path)
+            } else {
+              clean_path.to_string()
+            };
+            
             replacements.push(TemplateReplacement {
               find: full_match.to_string(),
-              replace: format!("src=\"{}\"", clean_path),
+              replace: format!("src=\"{}\"", final_path),
             });
+          }
+        }
+      }
+      
+      // Also handle direct SVG src attributes (add ?url if missing)
+      if template_content.contains(".svg") {
+        let svg_regex = Regex::new(r#"src="([^"]*\.svg)""#).unwrap();
+        for captures in svg_regex.captures_iter(template_content) {
+          if let Some(path_match) = captures.get(1) {
+            let path = path_match.as_str();
+            let full_match = captures.get(0).unwrap().as_str();
+            
+            // Only add ?url if it's not already there
+            if !path.ends_with("?url") {
+              replacements.push(TemplateReplacement {
+                find: full_match.to_string(),
+                replace: format!("src=\"{}?url\"", path),
+              });
+            }
           }
         }
       }

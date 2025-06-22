@@ -20,6 +20,9 @@ mod tests {
   <img src="~/assets/logo.png" alt="Logo" />
   <img :src="require('~/assets/logo.png')" alt="Logo" />
   <img :src="require('@/assets/logo.png')" alt="Logo" />
+  <img :src="require('~/assets/logo.svg')" alt="Logo" />
+  <img :src="require('@/assets/logo.svg')" alt="Logo" />
+  <img src="@/assets/logo.svg" alt="Logo" />
 </template>
 <script>
 export default {
@@ -34,6 +37,9 @@ export default {
   <img src="@/assets/logo.png" alt="Logo" />
   <img src="@/assets/logo.png" alt="Logo" />
   <img src="@/assets/logo.png" alt="Logo" />
+  <img src="@/assets/logo.svg?url" alt="Logo" />
+  <img src="@/assets/logo.svg?url" alt="Logo" />
+  <img src="@/assets/logo.svg?url" alt="Logo" />
 </template>
 <script setup>
 </script>"#;
