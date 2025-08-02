@@ -195,15 +195,18 @@ impl NuxtTransformer {
       }
 
       setup_code.push("};".to_string());
-
-      // Add empty line for separation
-      setup_code.push("".to_string());
-
-      // Call fetch() immediately at the end
-      setup_code.push("fetch();".to_string());
     }
 
     setup_code
+  }
+
+  /// Generate the onMounted lifecycle hook to call fetch
+  fn generate_fetch_lifecycle_hook(&self) -> Vec<String> {
+    vec![
+      "onMounted(async () => {".to_string(),
+      "  fetch();".to_string(),
+      "});".to_string(),
+    ]
   }
 
   /// Generate the asyncData method in Composition API style
@@ -474,8 +477,15 @@ impl Transformer for NuxtTransformer {
 
     // Generate fetch method if it exists
     if self.has_fetch_method(context) {
+      // Add onMounted import for fetch
+      result.add_import("vue", "onMounted");
+      
       let fetch_code = self.generate_fetch_method(context, config);
       result.methods.extend(fetch_code);
+      
+      // Add onMounted lifecycle hook to call fetch
+      let fetch_lifecycle = self.generate_fetch_lifecycle_hook();
+      result.lifecycle_hooks.extend(fetch_lifecycle);
     }
 
     // Generate asyncData method if it exists

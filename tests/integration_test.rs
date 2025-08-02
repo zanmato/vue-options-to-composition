@@ -183,7 +183,7 @@ const { t, d } = useI18n();
   <h1 @click="clickHandler">{{ data }}</h1>
 </template>
 <script setup>
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useHttp } from '@/composables/useHttp';
 
 const http = useHttp();
@@ -198,11 +198,13 @@ const fetch = async () => {
   rows.value = res.headers['x-total-count'];
 };
 
-fetch();
-
 const clickHandler = () => {
   fetch();
 };
+
+onMounted(async () => {
+  fetch();
+});
 </script>"#;
 
     assert_eq!(trim_whitespace(&result), trim_whitespace(expected));
