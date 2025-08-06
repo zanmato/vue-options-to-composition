@@ -2,6 +2,13 @@ use super::Transformer;
 use super::TransformerOrchestrator;
 use crate::{TemplateReplacement, TransformationContext, TransformationResult, TransformerConfig};
 use std::collections::HashMap;
+use lazy_static::lazy_static;
+use regex::Regex;
+
+lazy_static! {
+    static ref ASYNC_COMPONENT_DETECTION_PATTERN: Regex = Regex::new(r"const\s+\w+\s*=\s*\(\s*\)\s*=>\s*import\s*\(").unwrap();
+    static ref ASYNC_COMPONENT_TRANSFORM_PATTERN: Regex = Regex::new(r"const\s+(\w+)\s*=\s*\(\s*\)\s*=>\s*import\s*\(([^)]+)\)").unwrap();
+}
 
 /// Transformer for converting Options API to Composition API
 ///
@@ -102,6 +109,11 @@ impl CompositionTransformer {
 
     if !context.script_state.watchers.is_empty() {
       vue_imports.push("watch".to_string());
+    }
+
+    // Check if async components are used and add defineAsyncComponent
+    if self.has_async_components(context) {
+      vue_imports.push("defineAsyncComponent".to_string());
     }
 
     // Return Vue imports as vector for adding to result
@@ -443,6 +455,16 @@ impl CompositionTransformer {
     imports
   }
 
+  /// Check if the context contains async component definitions
+  fn has_async_components(&self, context: &TransformationContext) -> bool {
+    if let Some(setup_content) = &context.script_state.setup_content {
+      // Look for dynamic import patterns: const ComponentName = () => import(...)
+      ASYNC_COMPONENT_DETECTION_PATTERN.is_match(setup_content)
+    } else {
+      false
+    }
+  }
+
   /// Generate setup content (constants and other code between imports and export)
   fn generate_setup_content(&self, context: &TransformationContext) -> Vec<String> {
     if let Some(setup_content) = &context.script_state.setup_content {
@@ -450,7 +472,9 @@ impl CompositionTransformer {
       let mut result = Vec::new();
       for line in setup_content.lines() {
         if !line.trim().starts_with("import ") && !line.trim().is_empty() {
-          result.push(line.to_string());
+          // Transform dynamic imports to use defineAsyncComponent
+          let transformed_line = self.transform_async_components(line);
+          result.push(transformed_line);
         }
       }
 
@@ -461,6 +485,17 @@ impl CompositionTransformer {
       result
     } else {
       vec![]
+    }
+  }
+
+  /// Transform async component definitions to use defineAsyncComponent
+  fn transform_async_components(&self, line: &str) -> String {
+    if let Some(captures) = ASYNC_COMPONENT_TRANSFORM_PATTERN.captures(line) {
+      let component_name = &captures[1];
+      let import_path = &captures[2];
+      format!("const {} = defineAsyncComponent(() => import({}));", component_name, import_path)
+    } else {
+      line.to_string()
     }
   }
 

@@ -787,12 +787,12 @@ onMounted(() => {
   <h1>{{ title }}</h1>
 </template>
 <script setup>
-import { ref } from 'vue';
+import { defineAsyncComponent, ref } from 'vue';
 import vSelect from 'vue-select';
 import MyComponent from '@/components/MyComponent.vue';
 import AnotherComponent from '@/components/AnotherComponent.vue';
-const BigAsyncComponent = () => import('@/components/BigAsyncComponent.vue');
-const AnotherBigAsyncComponent = () => import('@/components/BigAsyncComponent.vue');
+const BigAsyncComponent = defineAsyncComponent(() => import('@/components/BigAsyncComponent.vue'));
+const AnotherBigAsyncComponent = defineAsyncComponent(() => import('@/components/BigAsyncComponent.vue'));
 
 const title = ref('Hello world');
 </script>"#;
