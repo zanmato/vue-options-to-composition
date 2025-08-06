@@ -58,7 +58,7 @@ pub mod body_transforms {
   pub fn apply_reactive_transforms(
     body: &str,
     context: &TransformationContext,
-    _config: &TransformerConfig,
+    config: &TransformerConfig,
   ) -> String {
     let mut result = body.to_string();
 
@@ -189,12 +189,21 @@ pub mod body_transforms {
               | "$destroy"
           );
 
+          // Check if this property is provided by a mixin composable
+          let is_mixin_property = if let Some(mixin_configs) = &config.mixins {
+            mixin_configs.values().any(|mixin_config| {
+              mixin_config.imports.contains(&var_name.to_string())
+            })
+          } else {
+            false
+          };
+
           if exists_in_data || exists_in_computed || exists_in_props || exists_in_methods {
             // This should have been transformed by earlier logic, but wasn't
             // Just remove the 'this.' for now
             var_name.to_string()
-          } else if is_framework_variable {
-            // This is a framework variable that should be handled by a transformer
+          } else if is_framework_variable || is_mixin_property {
+            // This is a framework variable or mixin property that should be handled by a transformer
             // but apparently wasn't - don't add FIXME, just remove 'this.'
             var_name.to_string()
           } else {

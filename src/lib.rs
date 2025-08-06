@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use tree_sitter::{Node, Parser};
 
 lazy_static! {
-  static ref MUSTACHE_PATTERN: Regex = Regex::new(r"\{\{(.*?)\}\}").unwrap();
+  static ref MUSTACHE_PATTERN: Regex = Regex::new(r"(?s)\{\{(.*?)\}\}").unwrap();
 }
 
 // Re-export transformers module
@@ -645,6 +645,7 @@ pub struct ComputedDetail {
   pub name: String,
   pub getter: Option<String>,
   pub setter: Option<String>,
+  pub setter_parameter: Option<String>, // Parameter name for setter (e.g., "value", "v")
   pub is_simple_function: bool, // true for computed: () => expr, false for { get, set }
 }
 
@@ -1250,6 +1251,7 @@ fn parse_computed_object(node: &Node, source: &str, state: &mut ScriptParsingSta
             name: computed_name.to_string(),
             getter: None,
             setter: None,
+            setter_parameter: None,
             is_simple_function: false,
           };
 
@@ -1277,6 +1279,7 @@ fn parse_computed_object(node: &Node, source: &str, state: &mut ScriptParsingSta
             name: computed_name.to_string(),
             getter: Some(extract_method_body(&child, source)),
             setter: None,
+            setter_parameter: None,
             is_simple_function: true,
           };
 
@@ -1308,7 +1311,14 @@ fn parse_computed_getter_setter(
 
           match method_name.as_str() {
             "get" => computed_detail.getter = Some(body),
-            "set" => computed_detail.setter = Some(body),
+            "set" => {
+              computed_detail.setter = Some(body);
+              // Extract setter parameter name
+              let params = extract_method_parameters(&child, source);
+              if !params.is_empty() {
+                computed_detail.setter_parameter = Some(params[0].clone());
+              }
+            },
             _ => {}
           }
         }
@@ -1321,7 +1331,14 @@ fn parse_computed_getter_setter(
 
           match method_name {
             "get" => computed_detail.getter = Some(body),
-            "set" => computed_detail.setter = Some(body),
+            "set" => {
+              computed_detail.setter = Some(body);
+              // Extract setter parameter name
+              let params = extract_method_parameters(&value_node, source);
+              if !params.is_empty() {
+                computed_detail.setter_parameter = Some(params[0].clone());
+              }
+            },
             _ => {}
           }
         }
@@ -1848,73 +1865,65 @@ fn extract_watcher_param_names(node: &Node, source: &str) -> (String, String) {
 }
 
 /// Iteratively walks a tree-sitter AST to extract identifiers and function calls for template parsing.
-pub fn walk_tree_iterative_template(
-  root: tree_sitter::Node,
+pub fn walk_tree_recursive_template(
+  node: tree_sitter::Node,
   source: &[u8],
   state: &mut TemplateParsingState,
 ) {
-  let mut cursor = root.walk();
-  let mut visiting_children = false;
-
-  loop {
-    let node = cursor.node();
-
-    if !visiting_children {
-      // Check if the node is an identifier or a function call
-      if node.kind() == "identifier" {
-        if let Ok(text) = node.utf8_text(source) {
-          if !state.identifiers.contains(&text.to_string()) {
-            state.identifiers.push(text.to_string());
-          }
+  // Process current node
+  match node.kind() {
+    "identifier" => {
+      if let Ok(text) = node.utf8_text(source) {
+        if !state.identifiers.contains(&text.to_string()) {
+          state.identifiers.push(text.to_string());
         }
-      } else if node.kind() == "call_expression" {
-        // Extract detailed function call information
-        if let Some(function_name) = node.child_by_field_name("function") {
-          if let Ok(function_text) = function_name.utf8_text(source) {
-            // Get full call text
-            if let Ok(full_call_text) = node.utf8_text(source) {
-              // Extract arguments from the call
-              if let Some(arguments_node) = node.child_by_field_name("arguments") {
-                let mut arguments = Vec::new();
+      }
+    },
+    "call_expression" => {
+      // Extract detailed function call information
+      if let Some(function_name) = node.child_by_field_name("function") {
+        if let Ok(function_text) = function_name.utf8_text(source) {
+          // Get full call text
+          if let Ok(full_call_text) = node.utf8_text(source) {
+            // Extract arguments from the call
+            if let Some(arguments_node) = node.child_by_field_name("arguments") {
+              let mut arguments = Vec::new();
 
-                // Parse each argument
-                for i in 0..arguments_node.child_count() {
-                  if let Some(child) = arguments_node.child(i) {
-                    if child.kind() != "," {
-                      if let Ok(arg_text) = child.utf8_text(source) {
-                        arguments.push(arg_text.to_string());
-                      }
+              // Parse each argument
+              for i in 0..arguments_node.child_count() {
+                if let Some(child) = arguments_node.child(i) {
+                  if child.kind() != "," {
+                    if let Ok(arg_text) = child.utf8_text(source) {
+                      arguments.push(arg_text.to_string());
                     }
                   }
                 }
+              }
 
-                let call_detail = FunctionCallDetail {
-                  name: function_text.to_string(),
-                  arguments,
-                  full_call: full_call_text.to_string(),
-                };
+              let call_detail = FunctionCallDetail {
+                name: function_text.to_string(),
+                arguments,
+                full_call: full_call_text.to_string(),
+              };
 
-                state.function_call_details.push(call_detail.clone());
+              state.function_call_details.push(call_detail.clone());
 
-                // Keep the existing simple function name for backward compatibility
-                if !state.function_calls.contains(&call_detail.name) {
-                  state.function_calls.push(call_detail.name);
-                }
+              // Keep the existing simple function name for backward compatibility
+              if !state.function_calls.contains(&call_detail.name) {
+                state.function_calls.push(call_detail.name);
               }
             }
           }
         }
       }
-    }
+    },
+    _ => {} // Process other node types if needed in the future
+  }
 
-    if !visiting_children && cursor.goto_first_child() {
-      visiting_children = false;
-    } else if cursor.goto_next_sibling() {
-      visiting_children = false;
-    } else if cursor.goto_parent() {
-      visiting_children = true;
-    } else {
-      break;
+  // Recursively process all child nodes to ensure we visit every node in the tree
+  for i in 0..node.child_count() {
+    if let Some(child) = node.child(i) {
+      walk_tree_recursive_template(child, source, state);
     }
   }
 }
@@ -2043,7 +2052,7 @@ pub fn parse_template_section(
 
     if let Some(tree) = parser.parse(directive.value.as_bytes(), None) {
       let root_node = tree.root_node();
-      walk_tree_iterative_template(root_node, directive.value.as_bytes(), state);
+      walk_tree_recursive_template(root_node, directive.value.as_bytes(), state);
     }
   }
 
@@ -2054,7 +2063,7 @@ pub fn parse_template_section(
 
     if let Some(tree) = parser.parse(mustache.content.as_bytes(), None) {
       let root_node = tree.root_node();
-      walk_tree_iterative_template(root_node, mustache.content.as_bytes(), state);
+      walk_tree_recursive_template(root_node, mustache.content.as_bytes(), state);
     }
   }
 

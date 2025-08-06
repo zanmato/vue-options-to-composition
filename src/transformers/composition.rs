@@ -201,7 +201,10 @@ impl CompositionTransformer {
           }
 
           setup_code.push("  },".to_string());
-          setup_code.push("  set(v) {".to_string());
+          
+          // Use the original setter parameter name if available, otherwise default to "v"
+          let setter_param = computed_detail.setter_parameter.as_deref().unwrap_or("v");
+          setup_code.push(format!("  set({}) {{", setter_param));
 
           // Transform the setter body
           let transformed_setter = self.transform_computed_body(setter, context, config);

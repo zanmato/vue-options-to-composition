@@ -139,11 +139,13 @@ impl I18nTransformer {
     // Check function calls for $t, $n, $d (but not $set, $delete, etc.)
     context.script_state.function_calls.iter().any(|call| {
             call.contains("this.$t(") || call.contains("this.$n(") || call.contains("this.$d(") ||
-            call.contains("$t(") || call.contains("$n(") || call.contains("$d(")
+            call.contains("$t(") || call.contains("$n(") || call.contains("$d(") ||
+            *call == "$t" || *call == "$n" || *call == "$d"
         }) ||
         // Check template for i18n usage
         context.template_state.function_calls.iter().any(|call| {
-            call.contains("$t(") || call.contains("$n(") || call.contains("$d(")
+            call.contains("$t(") || call.contains("$n(") || call.contains("$d(") ||
+            *call == "$t" || *call == "$n" || *call == "$d"
         }) ||
         // Check identifiers
         context.script_state.identifiers.iter().any(|id| {
@@ -318,17 +320,22 @@ impl I18nTransformer {
       .collect();
     let has_i18n_locale = self.has_i18n_locale_usage(context);
 
-    if all_calls.iter().any(|call| call.contains("$t("))
+    // Check for $t usage
+    if all_calls.iter().any(|call| call.contains("$t(") || *call == "$t")
       || all_identifiers.iter().any(|id| *id == "$t")
     {
       needed_functions.push("t");
     }
-    if all_calls.iter().any(|call| call.contains("$n("))
+    
+    // Check for $n usage
+    if all_calls.iter().any(|call| call.contains("$n(") || *call == "$n")
       || all_identifiers.iter().any(|id| *id == "$n")
     {
       needed_functions.push("n");
     }
-    if all_calls.iter().any(|call| call.contains("$d("))
+    
+    // Check for $d usage
+    if all_calls.iter().any(|call| call.contains("$d(") || *call == "$d")
       || all_identifiers.iter().any(|id| *id == "$d")
     {
       needed_functions.push("d");
@@ -346,6 +353,7 @@ impl I18nTransformer {
 
     setup_code
   }
+
 
   /// Generate template replacements for i18n function calls
   fn generate_template_replacements(

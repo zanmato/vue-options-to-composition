@@ -118,6 +118,40 @@ useHead(() => {
   }
 
   #[test]
+  fn test_should_handle_i18n_template_usage() {
+    let sfc = r#"<template>
+    <h1>{{ $t('hello') }}</h1>
+    <span>{{
+      $t('estimation', {
+        estimated_at: $d(new Date(), 'short'),
+      })
+    }}</span>
+    </template>
+    <script>
+    export default {}
+    </script>"#;
+
+    let result = rewrite_sfc(sfc, None).unwrap();
+
+    let expected = r#"
+<template>
+  <h1>{{ t('hello') }}</h1>
+  <span>{{
+    t('estimation', {
+      estimated_at: d(new Date(), 'short'),
+    })
+  }}</span>
+</template>
+<script setup>
+import { useI18n } from 'vue-i18n';
+
+const { t, d } = useI18n();
+</script>"#;
+
+    assert_eq!(trim_whitespace(&result), trim_whitespace(expected));
+  }
+
+  #[test]
   fn test_should_handle_nuxt_fetch() {
     let sfc = r#"<template><h1 @click="clickHandler">{{ data }}</h1></template>
     <script>
@@ -178,14 +212,40 @@ const clickHandler = () => {
   fn test_should_handle_custom_mixins() {
     let sfc = r#"<template><h1>{{ title }}{{ priceRaw(100) }}</h1></template>
     <script>
+    import pp from 'ninth-dimension';
     import priceMixin from '@/mixins/price';
 
     export default {
       mixins: [priceMixin],
       data() {
         return {
-          title: 'Hello World'
+          title: 'Hello World',
+          yolo: []
         };
+      },
+      computed: {
+        cartSum() {
+          return this.yolo.reduce(
+            (p, v) =>
+              p +
+              this.priceRaw(
+                v.price,
+              ) *
+                v.quantity,
+            0
+          );
+        }
+      },
+      methods: {
+        featureDetection() {
+          const paymentRequest = pp.paymentRequest({
+            currency: this.currency.toLowerCase(),
+            total: {
+              label: 'Total',
+              amount: price(100, 2),
+            },
+          });
+        },
       }
     }
     </script>"#;
@@ -222,12 +282,36 @@ const clickHandler = () => {
   <h1>{{ title }}{{ priceRaw(100) }}</h1>
 </template>
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import pp from 'ninth-dimension';
 import { usePrice } from '@/composables/usePrice';
 
-const { priceRaw } = usePrice();
+const { priceRaw, currency, price } = usePrice();
 
 const title = ref('Hello World');
+const yolo = ref([]);
+
+const cartSum = computed(() => {
+  return yolo.value.reduce(
+    (p, v) =>
+      p +
+      priceRaw(
+        v.price,
+      ) *
+      v.quantity,
+      0
+    );
+});
+
+const featureDetection = () => {
+  const paymentRequest = pp.paymentRequest({
+    currency: currency.toLowerCase(),
+    total: {
+      label: 'Total',
+      amount: price(100, 2),
+    },
+  });
+};
 </script>"#;
 
     assert_eq!(trim_whitespace(&result), trim_whitespace(expected));
@@ -400,6 +484,59 @@ const fullName = computed({
   },
   set(v) {
     const names = v.split(' ');
+    firstName.value = names[0];
+    lastName.value = names[1];
+  },
+});
+</script>"#;
+
+    assert_eq!(trim_whitespace(&result), trim_whitespace(expected));
+  }
+
+  #[test]
+  fn test_should_keep_computed_setter_name() {
+    let sfc = r#"<template><h1>{{ fullName }}</h1></template>
+    <script>
+    export default {
+      data() {
+        return {
+          firstName: 'John',
+          lastName: 'Doe'
+        };
+      },
+      computed: {
+        fullName: {
+          get() {
+            return `${this.firstName} ${this.lastName}`;
+          },
+          set(value) {
+            const names = value.split(' ');
+            this.firstName = names[0];
+            this.lastName = names[1];
+          }
+        }
+      }
+    }
+    </script>"#;
+
+    let result = rewrite_sfc(sfc, None).unwrap();
+
+    let expected = r#"
+<template>
+  <h1>{{ fullName }}</h1>
+</template>
+<script setup>
+import { computed, ref } from 'vue';
+
+const firstName = ref('John');
+const lastName = ref('Doe');
+
+const fullName = computed({
+  get() {
+    return `${firstName.value} ${lastName.value}`;
+  },
+  set(value) {
+    const names = value.split(' ');
     firstName.value = names[0];
     lastName.value = names[1];
   },
