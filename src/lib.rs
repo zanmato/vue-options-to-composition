@@ -1015,6 +1015,11 @@ fn parse_import_line(line: &str) -> Option<ImportInfo> {
 
 /// Recursively walks the AST to find Vue component sections (methods, computed, etc.)
 fn find_vue_component_sections(node: &Node, source: &str, state: &mut ScriptParsingState) {
+  // Look for variable declarations (for async components)
+  if node.kind() == "variable_declaration" {
+    parse_variable_declarations(node, source, state);
+  }
+
   // Look for export default object
   if node.kind() == "export_statement" {
     // Look for the value field which contains the exported object
@@ -1048,6 +1053,77 @@ fn find_vue_component_sections(node: &Node, source: &str, state: &mut ScriptPars
       find_vue_component_sections(&child, source, state);
     }
   }
+}
+
+/// Parses variable declarations to detect async components
+fn parse_variable_declarations(node: &Node, source: &str, state: &mut ScriptParsingState) {
+  // Look for variable_declarator nodes
+  for i in 0..node.child_count() {
+    if let Some(child) = node.child(i) {
+      if child.kind() == "variable_declarator" {
+        parse_async_component_declarator(&child, source, state);
+      }
+    }
+  }
+}
+
+/// Parses a single variable declarator to check if it's an async component
+fn parse_async_component_declarator(node: &Node, source: &str, state: &mut ScriptParsingState) {
+  // Get the variable name
+  if let Some(name_node) = node.child_by_field_name("name") {
+    let _variable_name = get_node_text(&name_node, source);
+    
+    // Get the value (the right-hand side of assignment)
+    if let Some(value_node) = node.child_by_field_name("value") {
+      // Check if it's an arrow function that imports
+      if is_async_component_declaration(&value_node, source) {
+        // This is an async component declaration - store it in setup_content
+        // The transformer will handle the conversion using the updated regex
+        let _declaration_text = get_node_text(node, source);
+        if let Some(ref mut _setup_content) = state.setup_content {
+          // Already have setup content, this should be part of it
+          // The regex-based approach in the transformer will handle the transformation
+        } else {
+          // This shouldn't happen since extract_imports_and_setup runs first,
+          // but just in case, we don't need to do anything as the regex handles it
+        }
+      }
+    }
+  }
+}
+
+/// Check if a value node represents an async component declaration
+fn is_async_component_declaration(node: &Node, source: &str) -> bool {
+  if node.kind() == "arrow_function" {
+    // Check if the body contains an import() call
+    if let Some(body_node) = node.child_by_field_name("body") {
+      return contains_dynamic_import(&body_node, source);
+    }
+  }
+  false
+}
+
+/// Recursively check if a node contains a dynamic import() call
+fn contains_dynamic_import(node: &Node, source: &str) -> bool {
+  if node.kind() == "call_expression" {
+    if let Some(function_node) = node.child_by_field_name("function") {
+      let function_text = get_node_text(&function_node, source);
+      if function_text == "import" {
+        return true;
+      }
+    }
+  }
+  
+  // Recursively check children
+  for i in 0..node.child_count() {
+    if let Some(child) = node.child(i) {
+      if contains_dynamic_import(&child, source) {
+        return true;
+      }
+    }
+  }
+  
+  false
 }
 
 /// Parses the main Vue component object to extract methods, computed properties, etc.

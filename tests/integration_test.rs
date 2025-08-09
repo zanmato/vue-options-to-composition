@@ -792,7 +792,8 @@ onMounted(() => {
     import AnotherComponent from '~/components/AnotherComponent.vue';
 
     const BigAsyncComponent = () => import('@/components/BigAsyncComponent.vue');
-    const AnotherBigAsyncComponent = () => import('~/components/BigAsyncComponent.vue');
+    const AnotherBigAsyncComponent = () =>
+      import('~/components/BigAsyncComponent.vue');
 
     export default {
       components: {

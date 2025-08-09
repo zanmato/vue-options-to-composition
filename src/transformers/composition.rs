@@ -7,7 +7,7 @@ use regex::Regex;
 
 lazy_static! {
     static ref ASYNC_COMPONENT_DETECTION_PATTERN: Regex = Regex::new(r"const\s+\w+\s*=\s*\(\s*\)\s*=>\s*import\s*\(").unwrap();
-    static ref ASYNC_COMPONENT_TRANSFORM_PATTERN: Regex = Regex::new(r"const\s+(\w+)\s*=\s*\(\s*\)\s*=>\s*import\s*\(([^)]+)\)").unwrap();
+    static ref ASYNC_COMPONENT_TRANSFORM_PATTERN: Regex = Regex::new(r"(?s)const\s+(\w+)\s*=\s*\(\s*\)\s*=>\s*import\s*\(([^)]+)\)").unwrap();
 }
 
 /// Transformer for converting Options API to Composition API
@@ -468,13 +468,14 @@ impl CompositionTransformer {
   /// Generate setup content (constants and other code between imports and export)
   fn generate_setup_content(&self, context: &TransformationContext) -> Vec<String> {
     if let Some(setup_content) = &context.script_state.setup_content {
+      // First, transform async components in the entire content to handle multi-line declarations
+      let transformed_content = ASYNC_COMPONENT_TRANSFORM_PATTERN.replace_all(&setup_content, "const $1 = defineAsyncComponent(() => import($2))");
+      
       // Extract everything except import statements from setup content
       let mut result = Vec::new();
-      for line in setup_content.lines() {
+      for line in transformed_content.lines() {
         if !line.trim().starts_with("import ") && !line.trim().is_empty() {
-          // Transform dynamic imports to use defineAsyncComponent
-          let transformed_line = self.transform_async_components(line);
-          result.push(transformed_line);
+          result.push(line.to_string());
         }
       }
 
@@ -485,17 +486,6 @@ impl CompositionTransformer {
       result
     } else {
       vec![]
-    }
-  }
-
-  /// Transform async component definitions to use defineAsyncComponent
-  fn transform_async_components(&self, line: &str) -> String {
-    if let Some(captures) = ASYNC_COMPONENT_TRANSFORM_PATTERN.captures(line) {
-      let component_name = &captures[1];
-      let import_path = &captures[2];
-      format!("const {} = defineAsyncComponent(() => import({}));", component_name, import_path)
-    } else {
-      line.to_string()
     }
   }
 
