@@ -61,7 +61,13 @@ const increment = () => {
   fn test_should_handle_i18n_methods() {
     let sfc = r#"<template>
     <h1>{{ $t('hello') }}</h1>
-    <span>{{ $n(count, 'currency') }}</span>
+    <span class="sum">
+      {{
+        $n(count, {
+          key: 'currency',
+        })
+      }}
+    </span>
     <span :title="$t('hello')">{{ $d(Date.now(), 'short') }}</span>
     </template>
     <script>
@@ -90,7 +96,13 @@ const increment = () => {
     let expected = r#"
 <template>
   <h1>{{ t('hello') }}</h1>
-  <span>{{ n(count, 'currency') }}</span>
+  <span class="sum">
+    {{
+      n(count, {
+        key: 'currency',
+      })
+    }}
+  </span>
   <span :title="t('hello')">{{ d(Date.now(), 'short') }}</span>
 </template>
 <script setup>
@@ -248,6 +260,12 @@ onMounted(async () => {
             },
           });
         },
+        claw() {
+          this.price(
+            100,
+            10
+          );
+        }
       }
     }
     </script>"#;
@@ -313,6 +331,13 @@ const featureDetection = () => {
       amount: price(100, 2),
     },
   });
+};
+
+const claw = () => {
+  price(
+    100,
+    10
+  );
 };
 </script>"#;
 

@@ -1,6 +1,5 @@
 use super::{BodyTransformFn, Transformer};
 use crate::{TransformationContext, TransformationResult, TransformerConfig};
-use std::collections::HashSet;
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -30,7 +29,27 @@ impl EmitTransformer {
 
   /// Check if context contains $emit usage
   fn has_emit_usage(&self, context: &TransformationContext) -> bool {
-    self.has_emit_in_identifiers(context) || self.has_emit_in_methods(context) || self.has_emit_in_computed(context)
+    self.has_emit_in_identifiers(context) || self.has_emit_in_methods(context) || self.has_emit_in_computed(context) || self.has_emit_in_template(context)
+  }
+
+  /// Check for $emit usage in template
+  fn has_emit_in_template(&self, context: &TransformationContext) -> bool {
+    // Check template function calls and identifiers for $emit
+    context
+      .template_state
+      .function_calls
+      .iter()
+      .any(|call| call.contains("$emit") && !call.contains("$nuxt.$emit"))
+      || context
+        .template_state
+        .identifiers
+        .iter()
+        .any(|id| id.contains("$emit") && !id.contains("$nuxt.$emit"))
+      || context
+        .template_state
+        .vue_directives
+        .iter()
+        .any(|directive| directive.value.contains("$emit") && !directive.value.contains("$nuxt.$emit"))
   }
 
   /// Check for $emit in identifiers and function calls
@@ -73,12 +92,51 @@ impl EmitTransformer {
 
   /// Extract emit event names from method bodies and function calls
   fn extract_emit_events(&self, context: &TransformationContext) -> Vec<String> {
-    let mut events = HashSet::new();
+    let mut events = Vec::new();
+
+    // Helper function to add unique events while preserving order
+    let mut add_event = |event: String| {
+      let mapped_event = self.map_event_name(&event);
+      if !events.contains(&mapped_event) {
+        events.push(mapped_event);
+      }
+    };
+
+    // Check template function call details for $emit calls first (to get template events first)
+    for call_detail in &context.template_state.function_call_details {
+      if call_detail.name == "$emit" && !call_detail.arguments.is_empty() {
+        // Find the first string literal argument (ignoring parentheses and other tokens)
+        for arg in &call_detail.arguments {
+          let cleaned_arg = arg.trim();
+          // Skip parentheses and other tokens, look for quoted strings
+          if (cleaned_arg.starts_with('\'') && cleaned_arg.ends_with('\'')) ||
+             (cleaned_arg.starts_with('"') && cleaned_arg.ends_with('"')) ||
+             (cleaned_arg.starts_with('`') && cleaned_arg.ends_with('`')) {
+            let event_name = cleaned_arg.trim_matches('\'').trim_matches('"').trim_matches('`');
+            if !event_name.is_empty() {
+              add_event(event_name.to_string());
+              break; // Only take the first string argument
+            }
+          }
+        }
+      }
+    }
+
+    // Check template directives for $emit calls
+    for directive in &context.template_state.vue_directives {
+      if let Some(extracted_events) = self.extract_events_from_body(&directive.value) {
+        for event in extracted_events {
+          add_event(event);
+        }
+      }
+    }
 
     // Check method bodies for $emit calls
     for method in &context.script_state.method_details {
       if let Some(extracted_events) = self.extract_events_from_body(&method.body) {
-        events.extend(extracted_events);
+        for event in extracted_events {
+          add_event(event);
+        }
       }
     }
 
@@ -86,13 +144,15 @@ impl EmitTransformer {
     for computed in &context.script_state.computed_details {
       if let Some(setter) = &computed.setter {
         if let Some(extracted_events) = self.extract_events_from_body(setter) {
-          events.extend(extracted_events);
+          for event in extracted_events {
+            add_event(event);
+          }
         }
       }
     }
 
-    // Map Vue2 event names to Vue3 equivalents
-    events.into_iter().map(|event| self.map_event_name(&event)).collect()
+    // Events are already mapped in add_event function
+    events
   }
 
   /// Extract event names from a method body
@@ -142,7 +202,7 @@ impl EmitTransformer {
       .iter()
       .map(|event| format!("'{}'", event))
       .collect::<Vec<_>>()
-      .join(", ");
+      .join(",");
 
     format!("const emit = defineEmits([{}]);", events_list)
   }
@@ -173,6 +233,12 @@ impl Transformer for EmitTransformer {
         result.add_setup(emit_setup);
         result.add_setup("".to_string()); // Add blank line
       }
+
+      // Add template replacements for $emit -> emit
+      result.template_replacements.push(crate::TemplateReplacement {
+        find: "$emit(".to_string(),
+        replace: "emit(".to_string(),
+      });
     }
 
     result

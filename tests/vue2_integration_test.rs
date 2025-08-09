@@ -359,7 +359,7 @@ onDeactivated(() => {
 
   #[test]
   fn test_should_handle_this_in_methods() {
-    let sfc = r#"<<template><h1>Hello</h1></template>
+    let sfc = r#"<<template><h1 @click="$emit('send-it')">Hello</h1></template>
 <script>
 export default {
   props: {
@@ -395,7 +395,7 @@ export default {
 
     let expected = r#"
 <template>
-<h1>Hello</h1>
+<h1 @click="emit('send-it')">Hello</h1>
 </template>
 <script setup>
 import { computed } from 'vue';
@@ -414,7 +414,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['update:value']);
+const emit = defineEmits(['send-it','update:value']);
 
 const showModal = computed({
   get() {

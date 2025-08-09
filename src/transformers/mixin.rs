@@ -129,6 +129,12 @@ impl Transformer for MixinTransformer {
               };
 
               result.setup.push(destructuring);
+              
+              // Mark these functions as resolved so they don't get FIXME comments
+              result.resolved_identifiers.extend(used_functions.clone());
+              
+              // Also mark them as resolved in skip_data_properties as a fallback
+              result.skip_data_properties.extend(used_functions);
             }
           }
         }

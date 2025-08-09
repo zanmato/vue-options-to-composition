@@ -51,7 +51,8 @@ pub mod body_transforms {
   use regex::Regex;
 
   lazy_static! {
-      static ref THIS_PROPERTY_PATTERN: Regex = Regex::new(r"this\.([a-zA-Z_$][a-zA-Z0-9_$]*)").unwrap();
+    static ref THIS_PROPERTY_PATTERN: Regex =
+      Regex::new(r"this\.([a-zA-Z_$][a-zA-Z0-9_$]*)").unwrap();
   }
 
   /// Apply reactive reference transformations to a body string
@@ -59,6 +60,7 @@ pub mod body_transforms {
     body: &str,
     context: &TransformationContext,
     config: &TransformerConfig,
+    transformation_result: Option<&crate::TransformationResult>,
   ) -> String {
     let mut result = body.to_string();
 
@@ -66,7 +68,7 @@ pub mod body_transforms {
     // Sort by length (longest first) to prevent substring replacements
     let mut data_props_sorted = context.script_state.data_properties.clone();
     data_props_sorted.sort_by(|a, b| b.name.len().cmp(&a.name.len()));
-    
+
     for data_prop in &data_props_sorted {
       let this_access = format!("this.{}", data_prop.name);
       let ref_access = format!("{}.value", data_prop.name);
@@ -77,7 +79,7 @@ pub mod body_transforms {
     // Sort by length (longest first) to prevent substring replacements
     let mut computed_props_sorted = context.script_state.computed_properties.clone();
     computed_props_sorted.sort_by(|a, b| b.len().cmp(&a.len()));
-    
+
     for computed_prop in &computed_props_sorted {
       let this_access = format!("this.{}", computed_prop);
       let ref_access = format!("{}.value", computed_prop);
@@ -88,7 +90,7 @@ pub mod body_transforms {
     // Sort by length (longest first) to prevent substring replacements
     let mut props_sorted = context.script_state.props.clone();
     props_sorted.sort_by(|a, b| b.name.len().cmp(&a.name.len()));
-    
+
     for prop in &props_sorted {
       let this_access = format!("this.{}", prop.name);
       let prop_access = format!("props.{}", prop.name);
@@ -99,7 +101,7 @@ pub mod body_transforms {
     // Sort by length (longest first) to prevent substring replacements
     let mut methods_sorted = context.script_state.methods.clone();
     methods_sorted.sort_by(|a, b| b.len().cmp(&a.len()));
-    
+
     for method in &methods_sorted {
       let this_call = format!("this.{}(", method);
       let direct_call = format!("{}(", method);
@@ -153,6 +155,14 @@ pub mod body_transforms {
             .iter()
             .any(|method| method == var_name);
 
+          // Check if this identifier was resolved by a transformer
+          let is_resolved_by_transformer = transformation_result
+            .map(|result| {
+              result.resolved_identifiers.contains(&var_name.to_string())
+                || result.skip_data_properties.contains(&var_name.to_string())
+            })
+            .unwrap_or(false);
+
           // Check if this is a known Vue/framework variable that should be handled by transformers
           let is_framework_variable = matches!(
             var_name,
@@ -191,15 +201,20 @@ pub mod body_transforms {
 
           // Check if this property is provided by a mixin composable
           let is_mixin_property = if let Some(mixin_configs) = &config.mixins {
-            mixin_configs.values().any(|mixin_config| {
-              mixin_config.imports.contains(&var_name.to_string())
-            })
+            mixin_configs
+              .values()
+              .any(|mixin_config| mixin_config.imports.contains(&var_name.to_string()))
           } else {
             false
           };
 
-          if exists_in_data || exists_in_computed || exists_in_props || exists_in_methods {
-            // This should have been transformed by earlier logic, but wasn't
+          if exists_in_data
+            || exists_in_computed
+            || exists_in_props
+            || exists_in_methods
+            || is_resolved_by_transformer
+          {
+            // This should have been transformed by earlier logic, or is resolved by a transformer
             // Just remove the 'this.' for now
             var_name.to_string()
           } else if is_framework_variable || is_mixin_property {
@@ -224,6 +239,7 @@ pub mod body_transforms {
     context: &TransformationContext,
     config: &TransformerConfig,
     additional_transforms: &[Box<super::BodyTransformFn>],
+    transformation_result: Option<&crate::TransformationResult>,
   ) -> String {
     let mut transformed_body = body.to_string();
 
@@ -233,7 +249,8 @@ pub mod body_transforms {
     }
 
     // Apply built-in reactive transforms
-    transformed_body = apply_reactive_transforms(&transformed_body, context, config);
+    transformed_body =
+      apply_reactive_transforms(&transformed_body, context, config, transformation_result);
 
     transformed_body
   }
@@ -293,7 +310,25 @@ impl TransformerOrchestrator {
     config: &TransformerConfig,
   ) -> String {
     let additional_transforms = self.collect_body_transforms(context, config);
-    body_transforms::apply_all_body_transforms(body, context, config, &additional_transforms)
+    body_transforms::apply_all_body_transforms(body, context, config, &additional_transforms, None)
+  }
+
+  /// Apply body transformations with resolved identifiers from transformation result
+  pub fn transform_method_body_with_result(
+    &self,
+    body: &str,
+    context: &TransformationContext,
+    config: &TransformerConfig,
+    transformation_result: &crate::TransformationResult,
+  ) -> String {
+    let additional_transforms = self.collect_body_transforms(context, config);
+    body_transforms::apply_all_body_transforms(
+      body,
+      context,
+      config,
+      &additional_transforms,
+      Some(transformation_result),
+    )
   }
 
   /// Get a static method for transforming bodies (for use in transformers)
@@ -303,7 +338,13 @@ impl TransformerOrchestrator {
       // Create a temporary orchestrator to get body transforms
       let orchestrator = TransformerOrchestrator::new();
       let additional_transforms = orchestrator.collect_body_transforms(context, config);
-      body_transforms::apply_all_body_transforms(body, context, config, &additional_transforms)
+      body_transforms::apply_all_body_transforms(
+        body,
+        context,
+        config,
+        &additional_transforms,
+        None,
+      )
     }
   }
 
@@ -332,7 +373,38 @@ impl TransformerOrchestrator {
     // Merge results with intelligent ordering
     self.merge_results_intelligently(&mut result, all_results);
 
+    // Fix any remaining FIXME comments for resolved identifiers
+    self.fix_remaining_fixme_comments(&mut result);
+
     result
+  }
+
+  /// Fix any remaining FIXME comments for identifiers that are now resolved
+  fn fix_remaining_fixme_comments(&self, result: &mut TransformationResult) {
+    for identifier in &result.resolved_identifiers.clone() {
+      let fixme_pattern = format!("/* FIXME: {} */ {}", identifier, identifier);
+      let replacement = identifier.clone();
+
+      // Fix FIXME comments in methods
+      for method in &mut result.methods {
+        *method = method.replace(&fixme_pattern, &replacement);
+      }
+
+      // Fix FIXME comments in computed properties
+      for computed in &mut result.computed_properties {
+        *computed = computed.replace(&fixme_pattern, &replacement);
+      }
+
+      // Fix FIXME comments in watchers
+      for watcher in &mut result.watchers {
+        *watcher = watcher.replace(&fixme_pattern, &replacement);
+      }
+
+      // Fix FIXME comments in lifecycle hooks
+      for lifecycle in &mut result.lifecycle_hooks {
+        *lifecycle = lifecycle.replace(&fixme_pattern, &replacement);
+      }
+    }
   }
 
   /// Merge results with intelligent ordering using the new structured approach
@@ -385,6 +457,10 @@ impl TransformerOrchestrator {
       result
         .skip_data_properties
         .extend(transformer_result.skip_data_properties);
+
+      result
+        .resolved_identifiers
+        .extend(transformer_result.resolved_identifiers);
 
       // Merge data refs with priority
       for (prop_name, (ref_declaration, priority)) in transformer_result.data_refs {

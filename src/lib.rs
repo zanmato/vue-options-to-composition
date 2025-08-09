@@ -1587,6 +1587,7 @@ pub struct TransformationResult {
   pub additional_scripts: Vec<String>, // Additional script blocks to append
   pub skip_data_properties: Vec<String>, // Data properties to skip (handled by other transformers)
   pub data_refs: HashMap<String, (String, u8)>, // property_name => (ref_declaration, priority)
+  pub resolved_identifiers: Vec<String>, // Identifiers that have been resolved by transformers
 }
 
 #[derive(Debug, Clone)]
@@ -1630,6 +1631,7 @@ impl TransformationResult {
       .extend(other.template_replacements);
     self.additional_scripts.extend(other.additional_scripts);
     self.skip_data_properties.extend(other.skip_data_properties);
+    self.resolved_identifiers.extend(other.resolved_identifiers);
 
     // Merge data refs by priority - higher priority overwrites lower priority
     for (prop_name, (ref_declaration, priority)) in other.data_refs {
